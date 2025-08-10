@@ -1,0 +1,14 @@
+name: example workflow
+on:
+  push:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  my-test-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: my test step
+        id: tst
+        run: echo "Hello World"
+      
