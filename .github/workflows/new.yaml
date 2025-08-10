@@ -5,7 +5,10 @@ on:
       - main
   pull_request:
   workflow_dispatch:
-
+env:
+  TERRAFORM: my-terraform
+  ENVIRONMENT: dev
+  
 jobs:
   my-test-job:
     runs-on: ubuntu-latest
@@ -19,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: terraform install
+        id: ${{ TERRAFORM }}-{{ ENVIRONMENT }}
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.1.7"
