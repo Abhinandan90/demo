@@ -1,5 +1,10 @@
 name: example workflow
-on: [push,workflow_dispatch,pull_request]
+on: 
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   my-test-job:
