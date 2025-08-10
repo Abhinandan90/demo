@@ -36,3 +36,12 @@ jobs:
         run: echo $ENVIRONMENT - $TERRAFORM is complete
       - name: Instal Python
         run: pip install snowflake-connector-python
+  github-context:
+    needs: [terraform-job]
+    runs-on: ubuntu-latest
+    steps: 
+      - name: get the context
+        run: ${{ toJSON(github) }}
+      - name: get outcome
+        run: ${{ toJSON(github.event.output) }}
+    
