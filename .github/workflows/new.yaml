@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps: 
       - name: get the context
-        run: echo ${{ toJSON(github) }}
+        run: echo '${{ toJSON(github) }}'
       - name: get outcome
-        run: echo ${{ toJSON(github.event.output) }}
+        run: echo '${{ toJSON(github.event.output) }}'
     
