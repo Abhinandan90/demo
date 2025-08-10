@@ -8,4 +8,5 @@ jobs:
       - name: my test step
         id: tst
         run: echo "Hello World"
-      
+      - name: checkout my repo
+        uses: actions/checkout@v4
