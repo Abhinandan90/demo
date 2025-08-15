@@ -66,7 +66,8 @@ resource "google_cloud_run_v2_job" "default" {
       service_account = google_service_account.cloud_run_job_sa.email
 
       containers {
-        image = "us-docker.pkg.dev/cloudrun/container/job"
+        # Minimal placeholder image
+        image = "gcr.io/google-containers/pause:3.5"
         resources {
           limits = {
             cpu    = "1"
@@ -82,6 +83,7 @@ resource "google_cloud_run_v2_job" "default" {
   lifecycle {
     ignore_changes = [
       launch_stage,
+      template[0].template[0].containers[0].image
     ]
   }
   depends_on = [
