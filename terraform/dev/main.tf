@@ -1,4 +1,5 @@
 locals{
+environment = "dev"
 project_id = "dev-posigen"
 region     = "us-central1"
 cloudrun_job_name = "dev-fleet-ingestion"
@@ -39,6 +40,20 @@ resource "google_project_iam_member" "composer_sa_cloud_run_access" {
   project = "dev-posigen"
   role    = "roles/run.admin"
   member  = "serviceAccount:${google_service_account.cloud_composer_service_account.email}"
+}
+
+resource "google_artifact_registry_repository" "fleet-artifact-repo" {
+  repository_id = "dev-fleet-repo"
+  description   = "Docker repository for cloud run container images"
+  location      = "us-central1"
+  format        = "DOCKER"
+}
+
+module "secrets" {
+  source = "../modules/secrets"
+  env_name = local.environment
+  region = local.region
+  project_id = local.project_id
 }
 
 resource "google_cloud_run_v2_job" "default" {
