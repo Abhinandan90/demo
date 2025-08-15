@@ -1,0 +1,41 @@
+name: Fleet CI/CD dev
+on:
+  push:
+    branches: 
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      envronment: 
+        description: 'Target Environment (dev)'
+        required: true
+        type: choice
+        options:
+          - dev
+      deploy_target:
+        description: 'Deployment action'
+        required: true
+        type: choice
+        options:
+          - plan
+          - deploy
+
+jobs:
+  terraform:
+    runs-on: ubuntu latest
+    steps:
+     - name: Checkout
+       uses: actions/checkout@v4
+     - name: Setup Terraform
+       uses: hashicorp/setup-terraform@v3
+       with:
+         terraform_version: "1.1.7"
+     - name: Auth Google
+       uses: 'google-github-actions/auth@v2'
+       with:
+         credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'
+     - name: Set up Cloud SDK
+       uses: 'google-github-actions/setup-gcloud@v2'
+     
