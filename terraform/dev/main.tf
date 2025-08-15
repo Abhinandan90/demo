@@ -48,7 +48,7 @@ resource "google_cloud_run_v2_job" "default" {
 
   template {
     template {
-      service account = google_service_account.cloud_run_job_sa.email
+      service_account = google_service_account.cloud_run_job_sa.email
 
       containers {
         image = "us-docker.pkg.dev/cloudrun/container/job"
