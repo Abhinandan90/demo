@@ -1,4 +1,4 @@
-name: Fleet CI/CD dev
+name: Fleet-BI dev
 on:
   push:
     branches: 
@@ -38,4 +38,29 @@ jobs:
          credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'
      - name: Set up Cloud SDK
        uses: 'google-github-actions/setup-gcloud@v2'
+     - name: Terraform init
+       run: |
+         cd ${{ github.workspace }}/${{ env.TERRAFORM_DIR }}
+         terraform init ${{ env.TF_INIT_ARGS }}
+     - name: terraform action
+       run: |
+         set -e
+         cd ${{ github.workspace }}/${{ env.TERRAFORM_DIR }}
+         if [ ${{ github.event_name }} = 'push' ] || ([ ${{ github.event_name }} = 'workflow_dispatch' ] && [ ${{ inputs.deploy_target }} == 'deploy' ]); then
+           echo "terraform apply in progress..."
+           terraform apply ${{ env.TF_INIT_ARGS }} -auto-approve
+         else
+           echo "terraform plan ..."
+           teraform plan ${{ env.TF_INIT_ARGS }} -lock=false -detailed-exit-code -no-color -out=$(pwd)/plan.out
+           status=$?
+
+           if [ ${status} -eq 1 ]; then
+             echo "Error occurred during terraform plan"
+             exit 1
+           fi
+
+           if [ {status} -eq 2 ]; then
+             terraform show plan.out
+           fi
+         fi
      
