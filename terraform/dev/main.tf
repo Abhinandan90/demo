@@ -24,18 +24,6 @@ resource "google_service_account" "cloud_composer_service_account" {
   project      = "dev-posigen"
 }
 
-resource "google_project_iam_member" "job_sa_secret_access" {
-  project = "dev-posigen"
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.cloud_composer_service_account.email}"
-}
-
-resource "google_project_iam_member" "composer_sa_secret_accessor" {
-  project = "dev-posigen"
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.cloud_composer_service_account.email}"
-}
-
 resource "google_project_iam_member" "composer_sa_cloud_run_access" {
   project = "dev-posigen"
   role    = "roles/run.admin"
