@@ -27,7 +27,7 @@ resource "google_service_account" "cloud_composer_service_account" {
 resource "google_project_iam_member" "job_sa_secret_access" {
   project = "dev-posigen"
   role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.cloud_run_job_sa.email}"
+  member  = "serviceAccount:${google_service_account.cloud_composer_service_account.email}"
 }
 
 resource "google_project_iam_member" "composer_sa_secret_accessor" {
@@ -49,11 +49,37 @@ resource "google_artifact_registry_repository" "fleet-artifact-repo" {
   format        = "DOCKER"
 }
 
-module "secrets" {
-  source = "../modules/secrets"
-  env_name = local.environment
-  region = local.region
-  project_id = local.project_id
+module "secret-manager" {
+  source  = "GoogleCloudPlatform/secret-manager/google"
+  version = "~> 0.8"
+  project_id = var.project_id
+  secrets = [
+    {
+      name                     = "${local.environment}-snf-logging-creds"
+      secret_data              = "TestData, update in console"
+      secret_accessors_list    = [google_service_account.cloud_composer_service_account.email]
+    },
+    {
+      name                     = "${local.environment}-fleet-snf"
+      secret_data              = "TestData, update in console"
+      secret_accessors_list    = [google_service_account.cloud_run_job_sa.email]
+    },
+    {
+      name                     = "${local.environment}-fleet-locus"
+      secret_data              = "TestData, update in console"
+      secret_accessors_list    = [google_service_account.cloud_run_job_sa.email]
+    },
+    {
+      name                     = "${local.environment}-fleet-enphase"
+      secret_data              = "TestData, update in console"
+      secret_accessors_list    = [google_service_account.cloud_run_job_sa.email]
+    },
+    {
+      name                     = "${local.environment}-fleet-solaredge"
+      secret_data              = "TestData, update in console"
+      secret_accessors_list    = [google_service_account.cloud_run_job_sa.email]
+    }
+  ]
 }
 
 resource "google_cloud_run_v2_job" "default" {
@@ -66,7 +92,7 @@ resource "google_cloud_run_v2_job" "default" {
       service_account = google_service_account.cloud_run_job_sa.email
 
       containers {
-        # Minimal placeholder image
+        // Minimal placeholder image
         image = "gcr.io/google-containers/pause:3.5"
         resources {
           limits = {
