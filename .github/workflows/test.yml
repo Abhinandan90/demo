@@ -57,20 +57,25 @@ jobs:
     steps:
      - name: Checkout
        uses: 'actions/checkout@v4'
+  
      - name: Setup Terraform
        uses: 'hashicorp/setup-terraform@v3'
        with:
          terraform_version: ${{ env.TF_VERSION }}
+         
      - name: Auth Google
        uses: 'google-github-actions/auth@v2'
        with:
          credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'
+         
      - name: Set up Cloud SDK
        uses: 'google-github-actions/setup-gcloud@v2'
+       
      - name: Terraform init
        run: |
          cd ${{ github.workspace }}/${{ env.TERRAFORM_DIR }}
          terraform init ${{ env.TF_INIT_ARGS }}
+         
      - name: terraform action
        run: |
          set -e
@@ -107,20 +112,26 @@ jobs:
     steps:
       - name: Checkout
         uses: 'actions/checkout@v4'
+        
       - name: Authenticate to Google Cloud
         uses: 'google-github-actions/auth@v2'
         with: 
-          credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'   
+          credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'
+          
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+          
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v2'
+        
       - name: Short SHA
         run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        
       - name: Configure Docker
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+        
       - name: Build and push docker image to Artifact Registry
         env: 
           IMAGE_URI: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GCP_ARTIFACT_REPO }}/${{ env.DOCKER_IMAGE_NAME }}
@@ -140,6 +151,7 @@ jobs:
     steps:
       - name: Checkout
         uses: 'actions/checkout@v4'
+        
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
