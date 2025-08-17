@@ -93,6 +93,12 @@ jobs:
   docker_build:
     runs-on: ubuntu-latest
     needs: [ app-ci-lint, terraform ]
+    env: 
+      REGION: 'us-central1'
+      PROJECT_ID: 'dev-posigen'
+      GCP_ARTIFACT_REPO: 'dev-fleet-ingestion'
+      DOCKER_IMAGE_NAME: 'dev-fleet-docker-image'
+      
     steps:
       - name: Checkout
         uses: 'actions/checkout@v4'
@@ -104,4 +110,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+      - name: Short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+      - name: Build and push docker image to Artifact Registry
+        env: 
+          IMAGE_URI: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GCP_ARTIFACT_REPO }}/${{ env.DOCKER_IMAGE_NAME }}
+        run: |
+          docker build -t "{{env.IMAGE_URI }}:${{ env.SHORT_SHA }}" -f Dockerfile .
+          docker push "{{env.IMAGE_URI }}:${{ env.SHORT_SHA }}"
      
