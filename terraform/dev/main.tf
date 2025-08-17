@@ -17,7 +17,7 @@ resource "google_service_account" "cloud_run_job_sa" {
   project      = "dev-posigen"
 }
 
-resource "google_service_account" "cloud_composer_service_account" {
+resource "google_service_account" "cloud_composer_sa" {
   account_id   = "fleet-ingestion-test-sa"
   display_name = "Terraform Managed Service Account"
   description  = "Service account to access secret and run cloud run via composer."
@@ -45,7 +45,7 @@ module "secret-manager" {
     {
       name                     = "${local.environment}-snf-logging-creds"
       secret_data              = "TestData, update in console"
-      secret_accessors_list    = [google_service_account.cloud_composer_service_account.email]
+      secret_accessors_list    = [google_service_account.cloud_composer_sa.email]
     },
     {
       name                     = "${local.environment}-fleet-snf"
@@ -70,7 +70,7 @@ module "secret-manager" {
   ]
 }
 
-resource "google_cloud_run_v2_job" "default" {
+resource "google_cloud_run_v2_job" "fleet-ingestion-job" {
   name     = local.cloudrun_job_name
   location = local.region
   deletion_protection = false
