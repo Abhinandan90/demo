@@ -176,6 +176,17 @@ jobs:
         run: |
           docker build -t "{{env.IMAGE_URI }}:${{ env.SHORT_SHA }}" -f Dockerfile .
           docker push "{{env.IMAGE_URI }}:${{ env.SHORT_SHA }}"
+
+###########################################################################
+#Update Cloud Run Job
+###########################################################################
+  update-cloud-run-job:
+    needs: if ${{ !contains(needs.*.result, 'failed') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Cloud Run Job
+        run: 
+
      
 ###########################################################################
 # Composer DAG Upload
