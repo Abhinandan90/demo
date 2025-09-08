@@ -1,0 +1,273 @@
+name: Dev Fleet CI/CD Pipeline
+on:
+  pull_request:
+    branches:
+      - master
+    types: [ labeled, opened, synchronize, reopened ]
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target Environment (dev)"
+        required: true
+        type: choice
+        options:
+          - dev
+      deploy_target:
+        description: "Deployment action"
+        required: true
+        type: choice
+        options:
+          - plan
+          - deploy
+
+env:
+  PROJECT_ID: "dev-posigen"
+  ENVIRONMENT: "dev"
+  REGION: "us-central1"
+  GCP_ARTIFACT_REPO: 'dev-fleet-repo'
+  DOCKER_IMAGE_NAME: 'dev-fleet-docker-image'
+  CLOUD_RUN_JOB_NAME: "dev-fleet-ingestion-job"
+
+jobs:
+  #################################################################################
+  # Lint App
+  #################################################################################
+  app-ci-lint:
+    name: "App CI Lint"
+    uses: posigensolar/devops/.github/workflows/common-ci.yml@master
+    secrets: inherit
+    with:
+      APP_NAME: fleet-data-ingestion
+      APP_DIR: "."
+      SKIP_REMOVE_LABELS: false
+      PYTHON: true
+      TF: true
+
+  #####################################################################################
+  # Terraform
+  #####################################################################################
+  terraform:
+    if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    needs: [app-ci-lint]
+    env:
+      TF_VERSION: 1.6.6
+      TF_INIT_ARGS: ''
+      TF_ACTION_ARGS: ''
+      TERRAFORM_DIR: "terraform/dev"
+    steps:
+      - name: Checkout
+        uses: "actions/checkout@v4"
+
+      - name: Setup Terraform
+        uses: "hashicorp/setup-terraform@v3"
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Auth Google
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}"
+
+      - name: Set up Cloud SDK
+        uses: "google-github-actions/setup-gcloud@v2"
+
+      - name: Terraform init
+        run: |
+          cd ${{ github.workspace }}/${{ env.TERRAFORM_DIR }}
+          terraform init ${{ env.TF_INIT_ARGS }}
+
+      - name: Terraform validate
+        run: |
+          cd ${{ github.workspace }}/${{ env.TERRAFORM_DIR }}
+          terraform validate
+
+      - name: Terraform Plan
+        if: github.event_name == 'pull_request' &&
+            (github.event.label.name != 'deploy dev') ||
+            (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'plan')
+        run: |
+          set -e
+          cd ${{ github.workspace }}/${{ env.TERRAFORM_DIR }}
+          echo "Running terraform plan ..."
+          terraform plan ${{ env.TF_ACTION_ARGS }} -lock=false -detailed-exitcode -no-color -out=$(pwd)/plan.out
+          status=$?
+
+          if [ ${status} -eq 1 ]; then
+            echo "Error occurred during terraform plan"
+            exit 1
+          fi
+
+          if [ ${status} -eq 2 ]; then
+            terraform show plan.out
+          fi
+
+      - name: Terraform Apply
+        if: github.event.label.name == 'deploy dev' ||
+            (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'deploy')
+        run: |
+          set -e
+          cd ${{ github.workspace }}/${{ env.TERRAFORM_DIR }}
+          echo "Running terraform apply..."
+          terraform apply ${{ env.TF_ACTION_ARGS }} -auto-approve
+
+###############################################################################
+# Build and Push Container Image
+###############################################################################
+  docker_build:
+    if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    needs: [ terraform ]
+    outputs: 
+      docker: ${{ steps.check.outputs.docker }}
+      image : ${{ steps.build-and-push.outputs.image }}
+      built : ${{ steps.build-and-push.outputs.built }}
+
+    steps:
+      - name: Checkout
+        uses: 'actions/checkout@v4'
+        
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with: 
+          credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'
+          
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - name: Detect file changes
+        id: check
+        uses: dorny/paths-filter@v3
+        with: 
+          filters: |
+            docker:
+              - 'Dockerfile'
+              - 'requirements.txt'
+              - 'fusion/**'
+              - 'main_ingestion.py'
+        
+      - name: Short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        
+      - name: Configure Docker
+        if: steps.check.outputs.docker == 'true'
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push docker image to Artifact Registry
+        id: build-and-push
+        if: steps.check.outputs.docker == 'true' && 
+            (github.event.label.name == 'deploy dev' || 
+            (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'deploy'))
+        env: 
+          IMAGE_URI: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GCP_ARTIFACT_REPO }}/${{ env.DOCKER_IMAGE_NAME }}
+        run: |
+          set -e
+          echo "Building and pushing Docker image..."
+          FULL_IMAGE_URI="${{env.IMAGE_URI }}:${{ env.SHORT_SHA }}"
+          docker build -t "${FULL_IMAGE_URI}" -f Dockerfile .
+          docker push "${FULL_IMAGE_URI}"
+          echo "image=${FULL_IMAGE_URI}" >> $GITHUB_OUTPUT
+          echo "built=true" >> $GITHUB_OUTPUT
+
+###########################################################################
+# Update Cloud Run Job
+###########################################################################
+  update-cloud-run-job:
+    if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result,'cancelled') && needs.docker_build.outputs.docker == 'true'}}
+    needs: [ docker_build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'
+
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - name: Update Cloud Run Job
+        if: needs.docker_build.outputs.built == 'true' && 
+            (github.event.label.name == 'deploy dev' || 
+            (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'deploy'))
+        run: |
+          set -e
+          echo "Updating Cloud Run Job with new image..."
+          gcloud run jobs update ${{ env.CLOUD_RUN_JOB_NAME }} \
+            --image="${{ needs.docker_build.outputs.image }}" \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --quiet \
+            --no-user-output-enabled
+          echo "Cloud Run Job updated successfully."
+
+#############################################################################
+# Detect and upload composer DAG changes
+#############################################################################
+  upload-composer-dags:
+    if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    needs: [ terraform ]
+    env:
+      COMPOSER_BUCKET: "dev-cxvoiceai-posigen-composer"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.DEV_GCP_SERVICE_ACCOUNT_JSON }}'
+
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - name: Detect DAG changes
+        id: dag-check
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            common_utils:
+              - 'src/dags/CommonUtils/*'
+            dags:
+              - 'src/dags/*'
+            config:
+              - 'src/dags/dev_config/config_variables.json'
+
+      - name: Install Python
+        if: steps.dag-check.outputs.dags == 'true'
+        uses: actions/setup-python@v4
+        with: 
+          python-version: '3.10'
+
+      - name: Upload DAGs to Composer
+        if: steps.dag-check.outputs.dags == 'true' && 
+            (github.event.label.name == 'deploy dev' || 
+            (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'deploy')) 
+        run: |
+          echo "Uploading DAGs to Composer..."
+          gsutil -m cp src/dags/*.py gs://$COMPOSER_BUCKET/dags/Dev/fleet_ingestion/Dags/
+
+      - name: Upload config to Composer
+        if: steps.dag-check.outputs.config == 'true' && 
+            (github.event.label.name == 'deploy dev' || 
+            (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'deploy'))
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: 'src/dags/dev_config/config_variables.json'
+          destination: 'dev-cxvoiceai-posigen-composer/dags/Dev/fleet_ingestion/Configurations'
+          process_gcloudignore: false
+
+      - name: Upload common utils to Composer
+        if: steps.dag-check.outputs.common_utils == 'true' && 
+            (github.event.label.name == 'deploy dev' || 
+            (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'deploy'))
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: 'src/dags/CommonUtils/'
+          destination: 'dev-cxvoiceai-posigen-composer/dags/Dev'
+          process_gcloudignore: false
